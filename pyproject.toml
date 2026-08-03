@@ -1,0 +1,17 @@
+[project]
+name = "pydm"
+version = "0.0.1"
+description = "A modern Python download manager."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "pyside6>=6.11.1",
+]
+
+[project.scripts]
+pydm = "pydm.app:main"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
