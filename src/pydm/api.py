@@ -1,3 +1,4 @@
+import sys
 from flask import Flask, request
 import threading
 
@@ -32,11 +33,12 @@ def receive_download():
 
        main_window.set_url(url)
 
-       main_window.showNormal()
-
-       main_window.raise_()
-
-       main_window.activateWindow()
+       if hasattr(main_window, "bring_to_front"):
+           main_window.bring_to_front()
+       else:
+           main_window.showNormal()
+           main_window.raise_()
+           main_window.activateWindow()
 
 
     return {

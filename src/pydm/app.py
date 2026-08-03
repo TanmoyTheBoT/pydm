@@ -1,5 +1,4 @@
 import sys
-import threading
 from pathlib import Path
 
 
@@ -11,12 +10,6 @@ from pydm.gui import MainWindow
 from pydm.version import (
     __version__,
     __app_name__
-)
-
-
-from pydm.native_host import (
-    native_host,
-    start_native_host
 )
 
 
@@ -57,26 +50,6 @@ def main():
 
 
     window = MainWindow()
-
-
-
-    # Native Messaging -> GUI
-
-    native_host.url_received.connect(
-        window.receive_url
-    )
-
-
-
-    # Start Native Host listener
-
-    # threading.Thread(
-
-    #     target=start_native_host,
-
-    #     daemon=True
-
-    # ).start()
 
 
 

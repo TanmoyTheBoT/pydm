@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
+from PySide6.QtNetwork import QTcpServer, QTcpSocket, QHostAddress
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -94,6 +95,53 @@ class DownloadWorker(QThread):
                 f"Error: {e}"
             )
 
+class NativeReceiver(QTcpServer):
+
+    url_received = Signal(str)
+
+
+    def __init__(self):
+
+        super().__init__()
+
+        self.newConnection.connect(
+            self.handle_connection
+        )
+
+
+    def start_server(self):
+        self.listen(
+            QHostAddress.LocalHost,
+            8765
+            )
+
+
+    def handle_connection(self):
+
+        socket = self.nextPendingConnection()
+
+        socket.readyRead.connect(
+            lambda: self.read_data(socket)
+        )
+
+
+    def read_data(self, socket):
+
+        data = socket.readAll()
+
+        url = bytes(data).decode(
+            "utf-8"
+        )
+
+
+        if url:
+
+            self.url_received.emit(
+                url
+            )
+
+
+        socket.close()
 
 
 class MainWindow(QMainWindow):
@@ -130,8 +178,18 @@ class MainWindow(QMainWindow):
         self.worker = None
 
 
-        self.setup_ui()
+        self.native_receiver = NativeReceiver()
 
+
+        self.native_receiver.url_received.connect(
+        self.receive_url
+        )
+
+
+        self.native_receiver.start_server()
+
+
+        self.setup_ui()
 
 
     def setup_ui(self):

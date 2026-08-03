@@ -1,93 +1,151 @@
 import sys
 import json
 import struct
-
-from PySide6.QtCore import QObject, Signal
-
-
-class NativeHost(QObject):
-
-    url_received = Signal(str)
+import socket
 
 
-    def read_message(self):
-
-        raw_length = sys.stdin.buffer.read(4)
-
-        if not raw_length:
-            return None
+PYDM_HOST = "127.0.0.1"
+PYDM_PORT = 8765
 
 
-        length = struct.unpack(
+
+def read_message():
+
+    raw_length = sys.stdin.buffer.read(4)
+
+    if not raw_length:
+        return None
+
+
+    message_length = struct.unpack(
+        "<I",
+        raw_length
+    )[0]
+
+
+    message = sys.stdin.buffer.read(
+        message_length
+    )
+
+
+    return json.loads(
+        message.decode("utf-8")
+    )
+
+
+
+def send_native_response(data):
+
+    encoded = json.dumps(
+        data
+    ).encode("utf-8")
+
+
+    sys.stdout.buffer.write(
+        struct.pack(
             "<I",
-            raw_length
-        )[0]
+            len(encoded)
+        )
+    )
 
 
-        data = sys.stdin.buffer.read(
-            length
-        ).decode("utf-8")
+    sys.stdout.buffer.write(
+        encoded
+    )
 
 
-        return json.loads(data)
+    sys.stdout.buffer.flush()
 
 
 
-    def send_message(self, data):
+def send_to_pydm(url):
 
-        encoded = json.dumps(data).encode("utf-8")
+    try:
+
+        client = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM
+        )
 
 
-        sys.stdout.buffer.write(
-            struct.pack(
-                "<I",
-                len(encoded)
+        client.connect(
+            (
+                PYDM_HOST,
+                PYDM_PORT
             )
         )
 
 
-        sys.stdout.buffer.write(
-            encoded
+        client.sendall(
+            url.encode("utf-8")
         )
 
 
-        sys.stdout.buffer.flush()
+        client.close()
+
+
+        return True
+
+
+    except Exception as e:
+
+        print(
+            str(e),
+            file=sys.stderr
+        )
+
+        return False
 
 
 
-    def run(self):
-
-        while True:
-
-            message = self.read_message()
+def main():
 
 
-            if message is None:
-                break
+    while True:
 
 
-            url = message.get("url")
+        message = read_message()
 
 
-            if url:
+        if message is None:
 
-                self.url_received.emit(
-                    url
-                )
+            break
 
 
-            self.send_message(
+
+        url = message.get(
+            "url"
+        )
+
+
+        if url:
+
+            success = send_to_pydm(
+                url
+            )
+
+
+            send_native_response(
                 {
-                    "status":"ok"
+                    "status":
+                    "received"
+                    if success
+                    else
+                    "pydm_not_running"
+                }
+            )
+
+
+        else:
+
+            send_native_response(
+                {
+                    "status":"no_url"
                 }
             )
 
 
 
-native_host = NativeHost()
+if __name__ == "__main__":
 
-
-
-def start_native_host():
-
-    native_host.run()
+    main()

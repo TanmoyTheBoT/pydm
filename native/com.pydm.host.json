@@ -1,0 +1,13 @@
+{
+  "name": "com.pydm.host",
+
+  "description": "PyDM Native Messaging Host",
+
+  "path": "C:\\Users\\TanmoyTheBoT\\repo\\pydm\\native_host_launcher.bat",
+
+  "type": "stdio",
+
+  "allowed_origins": [
+    "chrome-extension://bkibiddbjjhkbcfbfnipeikbcibaolec/"
+  ]
+}

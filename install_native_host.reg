@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+
+[HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.pydm.host]
+
+@="C:\\Users\\TanmoyTheBoT\\repo\\pydm\\native\\com.pydm.host.json"
+
+
+
+[HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.pydm.host]
+
+@="C:\\Users\\TanmoyTheBoT\\repo\\pydm\\native\\com.pydm.host.json"
