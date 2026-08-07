@@ -57,7 +57,22 @@ uv run pydm
 
 ## Browser Extension Setup
 
-### 1. Load the extension in Chrome or Edge
+### 1. Build the Windows executable
+
+From the repository root:
+
+```bash
+python -m pip install -e .[build]
+pyinstaller --noconfirm --clean --windowed --onefile --name pydm --icon src/pydm/assets/icon.ico --add-data "src/pydm/assets;src/pydm/assets" src/pydm/app.py
+```
+
+This creates a standalone Windows executable at `dist/pydm.exe`.
+
+### 2. Run the executable once
+
+Launching `pydm.exe` installs the browser host registration automatically and starts the desktop app. No manual `com.pydm.host.json` edit or registry import is required.
+
+### 3. Load the extension in Chrome or Edge
 
 1. Open `chrome://extensions` or `edge://extensions`
 2. Enable Developer mode
