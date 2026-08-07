@@ -18,6 +18,7 @@ def get_data_path(*parts):
     return Path(__file__).resolve().parent.joinpath(*parts)
 
 
+from pydm.host_register import ensure_browser_host_registered
 from pydm.gui import MainWindow
 from pydm.version import (
     __version__,
@@ -27,6 +28,8 @@ from pydm.version import (
 
 
 def main():
+    if sys.platform == "win32":
+        ensure_browser_host_registered()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
