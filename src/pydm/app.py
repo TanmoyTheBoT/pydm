@@ -6,6 +6,18 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 
 
+def get_data_path(*parts):
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+        candidate = base.joinpath(*parts)
+        if candidate.exists():
+            return candidate
+        candidate = base.joinpath("src", "pydm", *parts)
+        if candidate.exists():
+            return candidate
+    return Path(__file__).resolve().parent.joinpath(*parts)
+
+
 from pydm.gui import MainWindow
 from pydm.version import (
     __version__,
@@ -17,7 +29,7 @@ from pydm.version import (
 def main():
 
     app = QApplication(sys.argv)
-
+    app.setQuitOnLastWindowClosed(False)
 
     app.setApplicationName(
         __app_name__
@@ -32,13 +44,7 @@ def main():
 
     # Application icon
 
-    ICON_PATH = (
-        Path(__file__).parent
-        /
-        "assets"
-        /
-        "icon.ico"
-    )
+    ICON_PATH = get_data_path("assets", "icon.ico")
 
 
     app.setWindowIcon(
