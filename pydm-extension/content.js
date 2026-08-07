@@ -1,7 +1,7 @@
 const STORAGE_KEY = "enabled";
 const SAFE_PROTOCOLS = new Set(["http:", "https:"]);
 const DOWNLOAD_EXTENSIONS = /\.(exe|msi|zip|rar|7z|iso|apk|pdf|mp4|mkv|mp3|dll|deb|rpm|dmg|pkg|tar|gz|bz2|xz)$/i;
-const DOWNLOAD_PATH_HINTS = /(?:\/latest|\/download|\/downloads|\/installer|\/setup|\/install|\/release|\/releases)(?:\/|$)/i;
+const DOWNLOAD_PATH_HINTS = /(?:\/latest|\/download|\/downloads|\/installer|\/setup|\/install)(?:\/|$)/i;
 
 let enabled = true;
 

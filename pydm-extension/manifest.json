@@ -5,13 +5,14 @@
 
   "version": "0.0.1",
 
-  "description": "IDM style browser integration for PyDM",
+  "description": "Download files with PyDM",
 
   "permissions": [
     "downloads",
     "storage",
     "nativeMessaging",
-    "tabs"
+    "tabs",
+    "contextMenus"
   ],
 
   "host_permissions": [

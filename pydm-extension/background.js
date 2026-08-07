@@ -2,7 +2,7 @@ const STORAGE_KEY = "enabled";
 const NATIVE_HOST_NAME = "com.pydm.host";
 const SAFE_PROTOCOLS = new Set(["http:", "https:"]);
 const DOWNLOAD_EXTENSIONS = /\.(exe|msi|zip|rar|7z|iso|apk|pdf|mp4|mkv|mp3|dll|deb|rpm|dmg|pkg|tar|gz|bz2|xz)$/i;
-const DOWNLOAD_PATH_HINTS = /(?:\/latest|\/download|\/downloads|\/installer|\/setup|\/install|\/release|\/releases)(?:\/|$)/i;
+const DOWNLOAD_PATH_HINTS = /(?:\/latest|\/download|\/downloads|\/installer|\/setup|\/install)(?:\/|$)/i;
 
 let nativePort = null;
 let isConnecting = false;
@@ -50,6 +50,32 @@ function connectPyDM()
 
     return nativePort;
 }
+
+function createContextMenuItem()
+{
+    chrome.contextMenus.create({
+        id: "download-with-pydm",
+        title: "Download with PyDM",
+        contexts: ["link", "image", "video", "audio"],
+    });
+}
+
+chrome.contextMenus.onClicked.addListener(
+    (info)=>{
+        if(info.menuItemId !== "download-with-pydm")
+            return;
+
+        const url = info.linkUrl || info.srcUrl;
+        if(!url)
+            return;
+
+        sendToPyDM({
+            type: "download",
+            url: url,
+            source: "context-menu"
+        });
+    }
+);
 
 
 
@@ -141,6 +167,11 @@ chrome.runtime.onInstalled.addListener(()=>{
         [STORAGE_KEY]:true
     });
     updateExtensionState(true);
+    createContextMenuItem();
+});
+
+chrome.runtime.onStartup.addListener(()=>{
+    createContextMenuItem();
 });
 
 
