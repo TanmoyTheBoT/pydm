@@ -98,7 +98,18 @@ def send_to_pydm(url):
 
 
 
+def show_info() -> None:
+    print(
+        "PyDM Native Messaging Host\n"
+        "This executable is launched by the browser extension.\n"
+        "Do not run it directly. Start the PyDM desktop app and use the browser extension instead."
+    )
+
+
 def main():
+    if sys.stdin.isatty():
+        show_info()
+
 
 
     while True:
