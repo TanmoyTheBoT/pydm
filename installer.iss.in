@@ -5,6 +5,10 @@
 [Setup]
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppPublisher=TanmoyTheBoT
+AppPublisherURL=https://github.com/TanmoyTheBoT
+AppSupportURL=https://github.com/TanmoyTheBoT/pydm
+AppUpdatesURL=https://github.com/TanmoyTheBoT/pydm
 DefaultDirName={commonpf64}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=dist
