@@ -1,0 +1,24 @@
+#define AppName "@APP_NAME@"
+#define AppVersion "@VERSION@"
+#define PortableDir "@PORTABLE_DIR@"
+
+[Setup]
+AppName={#AppName}
+AppVersion={#AppVersion}
+DefaultDirName={commonpf64}\{#AppName}
+DefaultGroupName={#AppName}
+OutputDir=dist
+OutputBaseFilename=PyDM-v{#AppVersion}-Windows-x64-Installer
+Compression=lzma2
+SolidCompression=yes
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+SetupIconFile=src\pydm\assets\icon.ico
+UninstallDisplayIcon={app}\pydm.exe
+
+[Files]
+Source: "{#PortableDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\{#AppName}"; Filename: "{app}\pydm.exe"
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"

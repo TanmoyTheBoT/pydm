@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 *.exe
+*.iss
 
 # Virtual environments
 .venv
