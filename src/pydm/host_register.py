@@ -30,15 +30,54 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def get_app_root_dir() -> Path:
+def get_bundle_executable_path() -> Optional[Path]:
+    candidates: List[Path] = []
+
+    for value in (getattr(sys, "executable", None), getattr(sys, "argv", [None])[0]):
+        if not value:
+            continue
+
+        candidate = Path(str(value)).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        candidates.append(candidate)
+
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+
+        if candidate.suffix.lower() == ".exe":
+            if candidate.name.lower() in {
+                "pydm.exe",
+                "pydm-host.exe",
+                "app.exe",
+                "native_host.exe",
+            }:
+                return candidate
+
+    return None
+
+
+def is_bundle_runtime() -> bool:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        return True
+    return get_bundle_executable_path() is not None
+
+
+def get_app_root_dir() -> Path:
+    bundle_executable = get_bundle_executable_path()
+    if bundle_executable is not None:
+        return bundle_executable.parent
     return get_project_root()
 
 
 def get_manifest_path(base_dir: Optional[Path] = None) -> Path:
     if base_dir is None:
-        if getattr(sys, "frozen", False):
+        if is_bundle_runtime():
             base_dir = get_app_root_dir()
         else:
             base_dir = get_project_root() / "native"

@@ -15,6 +15,19 @@ def get_data_path(*parts):
         candidate = base.joinpath("src", "pydm", *parts)
         if candidate.exists():
             return candidate
+        candidate = base.joinpath("assets", *parts[1:]) if len(parts) > 1 and parts[0] == "assets" else None
+        if candidate and candidate.exists():
+            return candidate
+
+    for base in (
+        Path(__file__).resolve().parent,
+        Path(__file__).resolve().parent.parent,
+        Path.cwd(),
+    ):
+        candidate = base.joinpath(*parts)
+        if candidate.exists():
+            return candidate
+
     return Path(__file__).resolve().parent.joinpath(*parts)
 
 
