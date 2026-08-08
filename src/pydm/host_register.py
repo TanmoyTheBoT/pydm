@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -25,19 +26,29 @@ def get_app_data_dir() -> Path:
     return Path.home() / ".config" / "pydm"
 
 
+def get_project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def get_app_root_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return get_project_root()
+
+
 def get_manifest_path(base_dir: Optional[Path] = None) -> Path:
     if base_dir is None:
         if getattr(sys, "frozen", False):
-            base_dir = Path(sys.executable).parent
+            base_dir = get_app_root_dir()
         else:
-            base_dir = get_app_data_dir()
-    return (base_dir or get_app_data_dir()) / "com.pydm.host.json"
+            base_dir = get_project_root() / "native"
+    return Path(base_dir) / "com.pydm.host.json"
 
 
 def get_host_path(base_dir: Optional[Path] = None) -> Path:
-    if base_dir is None and getattr(sys, "frozen", False):
-        base_dir = Path(sys.executable).parent
-    return (base_dir or get_app_data_dir()) / "pydm-host.exe"
+    if base_dir is None:
+        base_dir = get_app_root_dir()
+    return Path(base_dir) / "pydm-host.exe"
 
 
 def get_host_command() -> List[str]:
@@ -49,11 +60,7 @@ def get_host_command() -> List[str]:
 def write_manifest(manifest_path: Path, host_path: Path, allowed_origins: Optional[Iterable[str]] = None) -> None:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    host_path_value = (
-        host_path.name
-        if host_path.parent == manifest_path.parent
-        else str(host_path)
-    )
+    host_path_value = host_path.name
 
     payload = {
         "name": "com.pydm.host",
@@ -79,10 +86,11 @@ def install_browser_host(
     else:
         host_path = host_path or get_host_path()
 
-    # For frozen builds, use a manifest next to the executable in native/.
-    if getattr(sys, "frozen", False):
-        manifest_path = get_manifest_path() if manifest_path is None else manifest_path
-        host_path = get_host_path() if host_path is None else host_path
+    # Default to the application folder for both manifest and host path.
+    if manifest_path is None:
+        manifest_path = get_manifest_path()
+    if host_path is None:
+        host_path = get_host_path()
 
     write_manifest(manifest_path, host_path, allowed_origins=allowed_origins)
 
