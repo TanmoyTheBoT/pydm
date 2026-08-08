@@ -78,7 +78,11 @@ def get_app_root_dir() -> Path:
 def get_manifest_path(base_dir: Optional[Path] = None) -> Path:
     if base_dir is None:
         if is_bundle_runtime():
-            base_dir = get_app_root_dir()
+            app_root = get_app_root_dir()
+            if sys.platform == "win32" and "program files" in str(app_root).lower():
+                base_dir = Path.home() / ".config" / "pydm"
+            else:
+                base_dir = app_root
         else:
             base_dir = get_project_root() / "native"
     return Path(base_dir) / "com.pydm.host.json"
@@ -99,7 +103,11 @@ def get_host_command() -> List[str]:
 def write_manifest(manifest_path: Path, host_path: Path, allowed_origins: Optional[Iterable[str]] = None) -> None:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    host_path_value = host_path.name
+    host_path_value = str(host_path)
+    if sys.platform == "win32" and "program files" in str(host_path).lower():
+        host_path_value = str(host_path)
+    else:
+        host_path_value = host_path.name
 
     payload = {
         "name": "com.pydm.host",
