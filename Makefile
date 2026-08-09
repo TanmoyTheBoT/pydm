@@ -33,10 +33,26 @@ pydm: pydm-pyinstaller
 pydm-host: pydm-host-pyinstaller
 
 pydm-nuitka:
-	$(NUITKA) --standalone --enable-plugin=pyside6 --windows-console-mode=disable --windows-icon-from-ico=src/pydm/assets/icon.ico --include-data-dir=src/pydm/assets=assets --output-dir=$(DIST) --output-filename=pydm $(APP)
+	$(NUITKA) --assume-yes-for-downloads --standalone --enable-plugin=pyside6 \
+		--windows-console-mode=disable \
+		--windows-icon-from-ico=src/pydm/assets/icon.ico \
+		--include-data-dir=src/pydm/assets=assets \
+		--company-name="TanmoyTheBoT" \
+		--product-name="PyDM" \
+		--file-version="$(VERSION)" \
+		--product-version="$(VERSION)" \
+		--copyright="TanmoyTheBoT" \
+		--output-dir=$(DIST) --output-filename=pydm $(APP)
 
 pydm-host-nuitka:
-	$(NUITKA) --standalone --windows-console-mode=force --output-dir=$(DIST) --output-filename=pydm-host $(HOST)
+	$(NUITKA) --assume-yes-for-downloads --standalone \
+		--windows-console-mode=force \
+		--company-name="TanmoyTheBoT" \
+		--product-name="PyDM Host" \
+		--file-version="$(VERSION)" \
+		--product-version="$(VERSION)" \
+		--copyright="TanmoyTheBoT" \
+		--output-dir=$(DIST) --output-filename=pydm-host $(HOST)
 
 pydm-pyinstaller:
 	$(PYINSTALLER) --noconfirm --clean --windowed --onefile --name pydm --icon src/pydm/assets/icon.ico --add-data "src/pydm/assets;src/pydm/assets" $(APP)
