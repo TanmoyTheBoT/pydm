@@ -58,10 +58,17 @@ def build_installer() -> None:
     if not any(portable_dir.iterdir()):
         raise FileNotFoundError(f"Portable folder is empty: {portable_dir}")
 
+    # Prepare version for file metadata: ensure four components (major.minor.build.revision)
+    parts = version.split('.') if version else []
+    while len(parts) < 4:
+        parts.append('0')
+    version_file = '.'.join(parts[:4])
+
     template_text = TEMPLATE.read_text(encoding="utf-8")
     rendered = (
         template_text.replace("@APP_NAME@", app_name)
         .replace("@VERSION@", version)
+        .replace("@VERSION_FILE@", version_file)
         .replace("@PORTABLE_DIR@", str(portable_dir.resolve()).replace("\\", "\\\\"))
     )
     OUTPUT_SCRIPT.write_text(rendered, encoding="utf-8")
