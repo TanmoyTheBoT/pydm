@@ -160,7 +160,7 @@ class DownloadWorker(QThread):
     transfer_rate = Signal(float)
     eta_text = Signal(str)
     resume_capability = Signal(bool)
-    filesize = Signal(int)
+    filesize = Signal(float)
 
     def __init__(self, url, folder):
         super().__init__()
@@ -364,7 +364,7 @@ class SegmentedDownloadWorker(QThread):
     transfer_rate = Signal(float)
     eta_text = Signal(str)
     resume_capability = Signal(bool)
-    filesize = Signal(int)
+    filesize = Signal(float)
     connections_changed = Signal(int)
     filename_changed = Signal(str)
 
@@ -382,28 +382,23 @@ class SegmentedDownloadWorker(QThread):
 
     def _select_connection_count(self, total_size):
         if total_size <= 0:
-            return 1
-        if total_size < 5 * 1024 * 1024:
-            return 1
-        if total_size < 25 * 1024 * 1024:
-            return 2
+            return max(2, multiprocessing.cpu_count() * 2)
 
         cpu_multiplier = max(1, multiprocessing.cpu_count())
-        # use one connection per ~20MB or at least 2x CPU count
-        count = max(2, int(total_size / (20 * 1024 * 1024)))
-        count = max(count, cpu_multiplier * 2)
-        return count
+        return max(2, cpu_multiplier * 2)
 
     def _probe_range_support(self, client):
         head = None
+        total_size = 0
         try:
             head = client.head(self.url, follow_redirects=True, timeout=0.35)
             if head.status_code < 400:
-                total_size = int(head.headers.get("Content-Length", 0))
-                if head.headers.get("Accept-Ranges", "").lower() == "bytes":
+                total_size = int(head.headers.get("Content-Length", 0) or 0)
+                accept_ranges = (head.headers.get("Accept-Ranges", "") or "").lower()
+                if accept_ranges == "bytes":
                     return True, total_size, head
-                return False, total_size, head
-            head.close()
+            if head is not None:
+                head.close()
         except Exception:
             head = None
 
@@ -417,30 +412,28 @@ class SegmentedDownloadWorker(QThread):
             )
             status = response.status_code
             if status == 206:
-                content_range = response.headers.get("Content-Range", "")
-                total_size = 0
+                content_range = response.headers.get("Content-Range", "") or ""
                 if "/" in content_range:
                     try:
                         total_size = int(content_range.split("/", 1)[1])
                     except Exception:
-                        total_size = int(response.headers.get("Content-Length", 0))
+                        total_size = int(response.headers.get("Content-Length", 0) or 0)
                 else:
-                    total_size = int(response.headers.get("Content-Length", 0))
+                    total_size = int(response.headers.get("Content-Length", 0) or 0)
                 return True, total_size, response
 
             if status in (200, 416):
-                total_size = 0
-                content_range = response.headers.get("Content-Range", "")
+                content_range = response.headers.get("Content-Range", "") or ""
                 if "/" in content_range:
                     try:
                         total_size = int(content_range.split("/", 1)[1])
                     except Exception:
-                        total_size = int(response.headers.get("Content-Length", 0))
+                        total_size = int(response.headers.get("Content-Length", 0) or 0)
                 else:
-                    total_size = int(response.headers.get("Content-Length", 0))
+                    total_size = int(response.headers.get("Content-Length", 0) or 0)
                 return False, total_size, response
 
-            total_size = int(response.headers.get("Content-Length", 0))
+            total_size = int(response.headers.get("Content-Length", 0) or 0)
             return False, total_size, response
         except Exception:
             try:
@@ -448,7 +441,7 @@ class SegmentedDownloadWorker(QThread):
                 if response.status_code >= 400:
                     response.close()
                     return False, 0, head
-                total_size = int(response.headers.get("Content-Length", 0))
+                total_size = int(response.headers.get("Content-Length", 0) or 0)
                 return False, total_size, response
             except Exception:
                 return False, 0, head
@@ -470,8 +463,16 @@ class SegmentedDownloadWorker(QThread):
 
             total_size = int(response.headers.get("Content-Length", total_size))
             unknown_size = total_size <= 0
-            self.filesize.emit(total_size)
-            self.resume_capability.emit(bool(can_resume))
+            self.filesize.emit(float(total_size))
+            
+            # Verify resume capability from actual response headers (always check, ignore probe result)
+            accept_ranges = (response.headers.get("Accept-Ranges", "") or "").lower()
+            actual_can_resume = accept_ranges == "bytes"
+            self.resume_capability.emit(bool(actual_can_resume))
+            
+            # Store resume metadata for validation (ETag, Last-Modified)
+            etag = response.headers.get("ETag", "")
+            last_modified = response.headers.get("Last-Modified", "")
             if unknown_size:
                 self.progress.emit(0)
                 self.eta_text.emit("-")
@@ -545,14 +546,14 @@ class SegmentedDownloadWorker(QThread):
             self._user_cancel = False
             self._pause_event.clear()
             self._parts = []
+            self.connections = None
             self.progress.emit(0)
             self.transfer_rate.emit(0.0)
             self.eta_text.emit("-")
             client = httpx.Client()
             self.message.emit("Probing server for range support...")
             supports_range, total_size, probe_response = self._probe_range_support(client)
-            self.filesize.emit(total_size)
-            self.resume_capability.emit(bool(supports_range))
+            self.filesize.emit(float(total_size))
 
             filename = None
             if probe_response is not None:
@@ -574,22 +575,16 @@ class SegmentedDownloadWorker(QThread):
                 self.transfer_rate.emit(0.0)
                 self.eta_text.emit("-")
                 self.message.emit("Server does not support ranged requests; using single connection")
-                self.resume_capability.emit(False)
                 self._single_connection_download(total_size, filename, can_resume=False)
                 return
 
-            if self.connections is None:
-                # server supports ranges: select connections based on size
-                self.connections = self._select_connection_count(total_size)
-                # cap connections to reasonable limit to avoid server rejection
-                self.connections = max(1, min(self.connections, 8))
-
+            self.connections = self._select_connection_count(total_size)
             self.connections_changed.emit(self.connections)
             self.progress.emit(0)
             self.transfer_rate.emit(0.0)
             self.eta_text.emit("-")
             if self.connections == 1:
-                self.message.emit("Using single connection (auto-detect or server does not support ranged requests)")
+                self.message.emit("Using single connection")
             else:
                 self.message.emit(f"Using {self.connections} connections")
 
