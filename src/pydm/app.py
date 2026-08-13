@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import os
 
 
 from PySide6.QtWidgets import QApplication
@@ -32,6 +33,7 @@ def get_data_path(*parts):
 
 
 from pydm.host_register import ensure_browser_host_registered
+from pydm.ui import PyDMMainWindow
 from pydm.gui import MainWindow
 from pydm.version import (
     __version__,
@@ -41,6 +43,21 @@ from pydm.version import (
 
 
 def main():
+    # Handle help and version before Qt initialization
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print(f"{__app_name__} v{__version__}")
+        print()
+        print("Usage: pydm [OPTIONS]")
+        print()
+        print("Options:")
+        print("  --start-in-tray    Start application minimized to system tray")
+        print("  --help, -h         Show this help message")
+        print()
+        print("Environment Variables:")
+        print("  PYDM_START_IN_TRAY Set to 1/true/yes to start in tray")
+        print()
+        sys.exit(0)
+
     if sys.platform == "win32":
         ensure_browser_host_registered()
 
@@ -69,13 +86,30 @@ def main():
         )
     )
 
+    # Check if app should start minimized to tray
+    # Support command-line argument: --start-in-tray
+    # Support environment variable: PYDM_START_IN_TRAY=1
+    start_in_tray = (
+        '--start-in-tray' in sys.argv or
+        os.environ.get('PYDM_START_IN_TRAY', '').lower() in ('1', 'true', 'yes')
+    )
 
+    window = PyDMMainWindow()
 
-    window = MainWindow()
-
-
-
-    window.show()
+    # Show window only if not starting in tray
+    if not start_in_tray:
+        window.show()
+    else:
+        # Keep window hidden in tray on startup
+        # The window is still created and functional, just not visible
+        window.hide()
+        if hasattr(window, 'tray') and window.tray:
+            window.tray.showMessage(
+                __app_name__,
+                "Application started and minimized to tray",
+                window.windowIcon(),
+                5000  # Show message for 5 seconds
+            )
 
 
 

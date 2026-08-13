@@ -2,12 +2,35 @@ from pathlib import Path
 from urllib.parse import urlparse
 import multiprocessing
 import re
-import traceback
 
 import httpx
 from PySide6.QtCore import QThread, Signal
 import time
 import threading
+
+
+def resolve_url_metadata(url: str, *, transport=None, timeout: float = 10.0):
+    """Return the final redirected URL and a file name derived from the server headers."""
+    raw_url = str(url).strip().replace("\r", "").replace("\n", "")
+    if not raw_url:
+        return "", "download.bin"
+
+    client = httpx.Client(follow_redirects=True, timeout=timeout, transport=transport)
+    try:
+        with client.stream("GET", raw_url, follow_redirects=True, timeout=timeout) as response:
+            response.raise_for_status()
+            final_url = str(response.url)
+            filename = get_filename(response, raw_url) or Path(urlparse(raw_url).path).name or "download.bin"
+            return final_url, filename
+    except Exception:
+        final_url = raw_url
+        filename = Path(urlparse(raw_url).path).name or "download.bin"
+        return final_url, filename
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
 
 
 def get_filename(response: httpx.Response, original_url: str) -> str:
@@ -368,10 +391,11 @@ class SegmentedDownloadWorker(QThread):
     connections_changed = Signal(int)
     filename_changed = Signal(str)
 
-    def __init__(self, url, folder, connections=None):
+    def __init__(self, url, folder, connections=None, temp_folder=None):
         super().__init__()
         self.url = str(url).strip().replace("\r", "").replace("\n", "")
-        self.folder = folder
+        self.folder = folder  # Final destination folder
+        self.temp_folder = temp_folder or folder  # Temp folder for .part files (default to folder if not specified)
         self.connections = None if connections is None else max(1, int(connections))
         self.manual_connections = self.connections if connections is not None else None
         self._parts = []
@@ -447,98 +471,102 @@ class SegmentedDownloadWorker(QThread):
                 return False, 0, head
 
     def _single_connection_download(self, total_size, filename, can_resume=True):
-        self.message.emit("Starting single connection download...")
-        with httpx.Client().stream("GET", self.url, follow_redirects=True, timeout=None) as response:
-            response.raise_for_status()
-            filename = get_filename(response, self.url)
-            if not filename:
-                filename = Path(urlparse(str(response.url)).path).name or Path(urlparse(self.url).path).name or "download.bin"
-            save_path = unique_filepath(self.folder, filename)
-            filename = save_path.name
-            self.filename_changed.emit(filename)
-            self.message.emit("Download started")
-            self.progress.emit(0)
-            self.transfer_rate.emit(0.0)
-            self.eta_text.emit("-")
-
-            total_size = int(response.headers.get("Content-Length", total_size))
-            unknown_size = total_size <= 0
-            self.filesize.emit(float(total_size))
-            
-            # Verify resume capability from actual response headers (always check, ignore probe result)
-            accept_ranges = (response.headers.get("Accept-Ranges", "") or "").lower()
-            actual_can_resume = accept_ranges == "bytes"
-            self.resume_capability.emit(bool(actual_can_resume))
-            
-            # Store resume metadata for validation (ETag, Last-Modified)
-            etag = response.headers.get("ETag", "")
-            last_modified = response.headers.get("Last-Modified", "")
-            if unknown_size:
+        try:
+            self.message.emit("Starting single connection download...")
+            with httpx.Client().stream("GET", self.url, follow_redirects=True, timeout=None) as response:
+                response.raise_for_status()
+                filename = get_filename(response, self.url)
+                if not filename:
+                    filename = Path(urlparse(str(response.url)).path).name or Path(urlparse(self.url).path).name or "download.bin"
+                save_path = unique_filepath(self.folder, filename)
+                filename = save_path.name
+                self.filename_changed.emit(filename)
+                self.message.emit("Download started")
                 self.progress.emit(0)
+                self.transfer_rate.emit(0.0)
                 self.eta_text.emit("-")
 
-            save_path = unique_filepath(self.folder, filename)
-            save_path.parent.mkdir(parents=True, exist_ok=True)
+                total_size = int(response.headers.get("Content-Length", total_size))
+                unknown_size = total_size <= 0
+                self.filesize.emit(float(total_size))
+                
+                # Verify resume capability from actual response headers (always check, ignore probe result)
+                accept_ranges = (response.headers.get("Accept-Ranges", "") or "").lower()
+                actual_can_resume = accept_ranges == "bytes"
+                self.resume_capability.emit(bool(actual_can_resume))
+                
+                # Store resume metadata for validation (ETag, Last-Modified)
+                etag = response.headers.get("ETag", "")
+                last_modified = response.headers.get("Last-Modified", "")
+                if unknown_size:
+                    self.progress.emit(0)
+                    self.eta_text.emit("-")
 
-            downloaded = 0
-            last_time = time.monotonic()
-            last_downloaded = 0
-            last_percent = 0
-            chunk_size = 1024 * 64
+                save_path = unique_filepath(self.folder, filename)
+                save_path.parent.mkdir(parents=True, exist_ok=True)
 
-            try:
-                with open(save_path, "wb") as fh:
-                    for chunk in response.iter_bytes(chunk_size=chunk_size):
-                        if self._cancel:
-                            try:
-                                fh.close()
-                                save_path.unlink(missing_ok=True)
-                            except Exception:
-                                pass
-                            self.message.emit("Cancelled")
-                            return
+                downloaded = 0
+                last_time = time.monotonic()
+                last_downloaded = 0
+                last_percent = 0
+                chunk_size = 1024 * 64
 
-                        while self._pause_event.is_set():
-                            time.sleep(0.1)
+                try:
+                    with open(save_path, "wb") as fh:
+                        for chunk in response.iter_bytes(chunk_size=chunk_size):
+                            if self._cancel:
+                                try:
+                                    fh.close()
+                                    save_path.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
+                                self.message.emit("Cancelled")
+                                return
 
-                        if chunk:
-                            fh.write(chunk)
-                            downloaded += len(chunk)
+                            while self._pause_event.is_set():
+                                time.sleep(0.1)
 
-                            now = time.monotonic()
-                            elapsed = now - last_time
-                            if elapsed >= 0.5:
-                                delta = downloaded - last_downloaded
-                                rate = delta / elapsed if elapsed > 0 else 0.0
-                                self.transfer_rate.emit(rate)
-                                if total_size and rate > 0:
-                                    eta = int((total_size - downloaded) / rate)
-                                    mins, secs = divmod(eta, 60)
-                                    self.eta_text.emit(f"{mins}m {secs}s")
+                            if chunk:
+                                fh.write(chunk)
+                                downloaded += len(chunk)
+
+                                now = time.monotonic()
+                                elapsed = now - last_time
+                                if elapsed >= 0.5:
+                                    delta = downloaded - last_downloaded
+                                    rate = delta / elapsed if elapsed > 0 else 0.0
+                                    self.transfer_rate.emit(rate)
+                                    if total_size and rate > 0:
+                                        eta = int((total_size - downloaded) / rate)
+                                        mins, secs = divmod(eta, 60)
+                                        self.eta_text.emit(f"{mins}m {secs}s")
+                                    else:
+                                        self.eta_text.emit("-")
+                                    last_time = now
+                                    last_downloaded = downloaded
+
+                                if unknown_size:
+                                    if downloaded % (1024 * 1024) < chunk_size:
+                                        self.message.emit(f"{filename} ({downloaded // 1024} KB)")
                                 else:
-                                    self.eta_text.emit("-")
-                                last_time = now
-                                last_downloaded = downloaded
+                                    percent = int(downloaded / total_size * 100)
+                                    if percent != last_percent:
+                                        self.progress.emit(percent)
+                                        last_percent = percent
+                except httpx.ReadError as e:
+                    self.message.emit(f"Error: {e}")
+                    return
 
-                            if unknown_size:
-                                if downloaded % (1024 * 1024) < chunk_size:
-                                    self.message.emit(f"{filename} ({downloaded // 1024} KB)")
-                            else:
-                                percent = int(downloaded / total_size * 100)
-                                if percent != last_percent:
-                                    self.progress.emit(percent)
-                                    last_percent = percent
-            except httpx.ReadError as e:
-                self.message.emit(f"Error: {e}")
-                return
-
-            if total_size > 0:
-                self.progress.emit(100)
-            else:
-                self.progress.emit(100)
-            self.transfer_rate.emit(0.0)
-            self.eta_text.emit("-")
-            self.finished.emit(str(save_path))
+                if total_size > 0:
+                    self.progress.emit(100)
+                else:
+                    self.progress.emit(100)
+                self.transfer_rate.emit(0.0)
+                self.eta_text.emit("-")
+                self.finished.emit(str(save_path))
+        except Exception as e:
+            error_msg = str(e).strip()
+            self.message.emit(f"Error: {error_msg}")
 
     def run(self):
         try:
@@ -553,6 +581,7 @@ class SegmentedDownloadWorker(QThread):
             client = httpx.Client()
             self.message.emit("Probing server for range support...")
             supports_range, total_size, probe_response = self._probe_range_support(client)
+            self.resume_capability.emit(bool(supports_range))
             self.filesize.emit(float(total_size))
 
             filename = None
@@ -574,6 +603,7 @@ class SegmentedDownloadWorker(QThread):
                 self.progress.emit(0)
                 self.transfer_rate.emit(0.0)
                 self.eta_text.emit("-")
+                self.resume_capability.emit(False)
                 self.message.emit("Server does not support ranged requests; using single connection")
                 self._single_connection_download(total_size, filename, can_resume=False)
                 return
@@ -709,7 +739,7 @@ class SegmentedDownloadWorker(QThread):
 
             # start part downloaders (detect existing part sizes to resume)
             for idx, (s, e) in enumerate(ranges):
-                part_path = Path(self.folder) / f"{filename}.part{idx}"
+                part_path = Path(self.temp_folder) / f"{filename}.part{idx}"
                 existing = 0
                 try:
                     if part_path.exists():
@@ -718,7 +748,7 @@ class SegmentedDownloadWorker(QThread):
                     existing = 0
                 # record existing bytes for progress calculations
                 part_totals[idx] = existing
-                part = PartDownloader(self.url, s, e, idx, self.folder, filename, existing=existing)
+                part = PartDownloader(self.url, s, e, idx, self.temp_folder, filename, existing=existing)
                 part.progress.connect(on_part_progress)
                 part.finished.connect(on_part_finished)
                 part.error.connect(on_part_error)
@@ -740,7 +770,7 @@ class SegmentedDownloadWorker(QThread):
                 self.message.emit("Retrying with single connection after segmented download failure...")
                 # remove any temporary part files from this download attempt
                 for idx in range(self.connections):
-                    temp_path = Path(self.folder) / f"{filename}.part{idx}"
+                    temp_path = Path(self.temp_folder) / f"{filename}.part{idx}"
                     try:
                         temp_path.unlink(missing_ok=True)
                     except Exception:
@@ -754,7 +784,8 @@ class SegmentedDownloadWorker(QThread):
                 return
 
         except Exception as e:
-            self.message.emit(f"Error: {e}\n{traceback.format_exc()}")
+            error_msg = str(e).strip()
+            self.message.emit(f"Error: {error_msg}")
 
     def pause(self):
         self._pause_event.set()
