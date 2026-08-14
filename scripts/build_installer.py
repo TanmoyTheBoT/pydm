@@ -16,7 +16,7 @@ def read_version() -> str:
     version_file = ROOT / "src" / "pydm" / "version.py"
     namespace = {}
     exec(version_file.read_text(encoding="utf-8"), namespace)
-    return str(namespace.get("__version__", "0.0.1"))
+    return str(namespace["__version__"])
 
 
 def read_app_name() -> str:

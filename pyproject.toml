@@ -1,6 +1,6 @@
 [project]
 name = "pydm"
-version = "0.0.1"
+dynamic = ["version"]
 description = "A modern Python download manager."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,6 +11,12 @@ dependencies = [
 
 [project.scripts]
 pydm = "pydm.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "pydm.version.__version__"}
 
 [build-system]
 requires = ["setuptools", "wheel"]

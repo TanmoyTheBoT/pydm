@@ -72,7 +72,6 @@ wheels = [
 
 [[package]]
 name = "pydm"
-version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
