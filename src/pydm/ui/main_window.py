@@ -69,9 +69,10 @@ class DownloadQueueProcessor(QObject):
     download_finished = Signal(str, str, int)  # download_id, filepath, filesize
     filesize_emitted = Signal(str, int)  # download_id, filesize
 
-    def __init__(self, queue_manager: DownloadQueueManager):
+    def __init__(self, queue_manager: DownloadQueueManager, config=None):
         super().__init__()
         self.queue_manager = queue_manager
+        self.config = config or get_config()
         self.current_worker = None
         self.current_download_id = None
         self.current_progress_dialog = None
@@ -184,8 +185,8 @@ class DownloadQueueProcessor(QObject):
             download = self.queue_manager.get_download(download_id)
             if download:
                 download.filename = filename or download.filename
-                # Also update database with actual filename
-                self.config.update_download_filename(download_id, download.filename)
+                if getattr(self, "config", None) is not None:
+                    self.config.update_download_filename(download_id, download.filename)
             dialog = self.active_dialogs.get(download_id)
             if dialog is not None and filename:
                 dialog.update_filename(filename)
@@ -263,12 +264,14 @@ class DownloadQueueProcessor(QObject):
     def pause(self):
         """Pause queue processing"""
         self._is_paused = True
+        self.queue_manager.pause()
         if self.current_worker and self.current_worker.isRunning():
             self.current_worker.pause()
     
     def resume(self):
         """Resume queue processing"""
         self._is_paused = False
+        self.queue_manager.resume()
         # Ensure timer is always running
         if self.check_timer.isActive():
             self.check_timer.stop()
@@ -311,7 +314,7 @@ class PyDMMainWindow(QMainWindow):
         
         # Download queue
         self.queue_manager = DownloadQueueManager(max_concurrent=3)
-        self.queue_processor = DownloadQueueProcessor(self.queue_manager)
+        self.queue_processor = DownloadQueueProcessor(self.queue_manager, config=self.config)
         
         # Data
         self.download_id_counter = 0
@@ -345,6 +348,8 @@ class PyDMMainWindow(QMainWindow):
             self.queue_processor.filesize_emitted.connect(self._on_filesize_emitted)
         except Exception:
             pass
+
+        self._update_task_menu_state()
         
         # Load previous downloads from database
         self._load_downloads_from_database()
@@ -410,6 +415,7 @@ class PyDMMainWindow(QMainWindow):
         self.download_list = DownloadListWidget()
         self.download_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.download_list.customContextMenuRequested.connect(self._on_download_context_menu)
+        self.download_list.selectionModel().selectionChanged.connect(self._update_task_menu_state)
         
         # Connect column width changes to save them
         self.download_list.column_widths_changed.connect(self._on_column_widths_changed)
@@ -439,86 +445,48 @@ class PyDMMainWindow(QMainWindow):
         central_widget.setLayout(layout)
     
     def _setup_menu_bar(self):
-        """Setup menu bar"""
+        """Setup compact menu bar with working actions."""
         menubar = self.menuBar()
-        
-        # File Menu
-        file_menu = menubar.addMenu("&File")
-        
-        add_action = QAction("&Add Download...", self)
+        menubar.setNativeMenuBar(False)
+
+        file_menu = menubar.addMenu("File")
+        add_action = QAction("Add Download", self)
         add_action.setShortcut(QKeySequence.New)
         add_action.triggered.connect(self._add_download)
         file_menu.addAction(add_action)
-        
         file_menu.addSeparator()
-        exit_action = QAction("E&xit", self)
+        exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence.Quit)
-        exit_action.triggered.connect(self.close)
+        exit_action.triggered.connect(self._on_exit)
         file_menu.addAction(exit_action)
-        
-        # Downloads Menu
-        downloads_menu = menubar.addMenu("&Downloads")
-        
-        start_all_action = QAction("&Start All", self)
-        start_all_action.triggered.connect(self._start_all_downloads)
-        downloads_menu.addAction(start_all_action)
-        
-        pause_all_action = QAction("&Pause All", self)
-        pause_all_action.triggered.connect(self._pause_all_downloads)
-        downloads_menu.addAction(pause_all_action)
-        
-        stop_all_action = QAction("Sto&p All", self)
-        stop_all_action.triggered.connect(self._stop_all_downloads)
-        downloads_menu.addAction(stop_all_action)
-        
-        downloads_menu.addSeparator()
-        
-        remove_action = QAction("&Remove Selected", self)
-        remove_action.triggered.connect(self._remove_selected_downloads)
-        downloads_menu.addAction(remove_action)
-        
-        clear_action = QAction("&Clear Completed", self)
-        clear_action.triggered.connect(self._clear_completed_downloads)
-        downloads_menu.addAction(clear_action)
-        
-        # View Menu
-        view_menu = menubar.addMenu("&View")
-        
-        refresh_action = QAction("&Refresh", self)
-        refresh_action.setShortcut(Qt.CTRL | Qt.Key_R)
-        refresh_action.triggered.connect(self._refresh_view)
-        view_menu.addAction(refresh_action)
-        
-        view_menu.addSeparator()
-        
-        tray_action = QAction("Show in &Tray", self)
-        tray_action.setCheckable(True)
-        tray_action.setChecked(True)
-        view_menu.addAction(tray_action)
-        
-        # Tools Menu
-        tools_menu = menubar.addMenu("&Tools")
-        
-        options_action = QAction("&Options", self)
-        options_action.setShortcut(Qt.CTRL | Qt.Key_Comma)
+
+        tasks_menu = menubar.addMenu("Tasks")
+        self.start_all_action = QAction("Start All", self)
+        self.start_all_action.triggered.connect(self._start_all_downloads)
+        tasks_menu.addAction(self.start_all_action)
+        self.pause_all_action = QAction("Pause All", self)
+        self.pause_all_action.triggered.connect(self._pause_all_downloads)
+        tasks_menu.addAction(self.pause_all_action)
+        self.stop_all_action = QAction("Stop All", self)
+        self.stop_all_action.triggered.connect(self._stop_all_downloads)
+        tasks_menu.addAction(self.stop_all_action)
+        tasks_menu.addSeparator()
+        self.remove_selected_action = QAction("Remove Selected", self)
+        self.remove_selected_action.triggered.connect(self._remove_selected_downloads)
+        self.remove_selected_action.setEnabled(False)
+        tasks_menu.addAction(self.remove_selected_action)
+        self.clear_completed_action = QAction("Clear Completed", self)
+        self.clear_completed_action.triggered.connect(self._clear_completed_downloads)
+        self.clear_completed_action.setEnabled(False)
+        tasks_menu.addAction(self.clear_completed_action)
+
+        tools_menu = menubar.addMenu("Tools")
+        options_action = QAction("Options", self)
         options_action.triggered.connect(self._show_options)
         tools_menu.addAction(options_action)
-        
-        batch_action = QAction("&Batch Download", self)
-        batch_action.triggered.connect(self._batch_download)
-        tools_menu.addAction(batch_action)
-        
-        # Tasks Menu
-        tasks_menu = menubar.addMenu("&Tasks")
-        
-        scheduler_action = QAction("&Scheduler", self)
-        scheduler_action.triggered.connect(self._show_scheduler)
-        tasks_menu.addAction(scheduler_action)
-        
-        # Help Menu
-        help_menu = menubar.addMenu("&Help")
-        
-        about_action = QAction("&About", self)
+
+        help_menu = menubar.addMenu("Help")
+        about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
     
@@ -555,12 +523,6 @@ class PyDMMainWindow(QMainWindow):
         delete_btn.clicked.connect(self._remove_selected_downloads)
         toolbar.addWidget(delete_btn)
         
-        toolbar.addSeparator()
-        
-        # Options
-        options_btn = ToolbarButton("Options", tooltip="Settings")
-        options_btn.clicked.connect(self._show_options)
-        toolbar.addWidget(options_btn)
     
     def _setup_status_bar(self):
         """Setup status bar"""
@@ -873,6 +835,7 @@ class PyDMMainWindow(QMainWindow):
         if not self.queue_processor.check_timer.isActive():
             self.queue_processor.check_timer.start(100)
         self.queue_processor._is_paused = False
+        self.queue_manager.resume()
         self.queue_processor._check_and_start_next()
         
         if self.queue_processor.current_worker is not None and self.queue_processor.current_worker.isRunning():
@@ -1024,13 +987,41 @@ class PyDMMainWindow(QMainWindow):
         """Handle queue changes"""
         stats = self.queue_manager.get_statistics()
         total_downloads = stats["queued"] + stats["active"] + stats["completed"] + stats["failed"]
+
+        total_downloaded = 0
+        for download in self.queue_manager.get_all_downloads().values():
+            if not getattr(download, "size", None):
+                continue
+
+            if getattr(download, "status", "") == "completed":
+                total_downloaded += int(download.size)
+            else:
+                progress = max(0, min(100, int(getattr(download, "progress", 0))))
+                total_downloaded += int((progress / 100.0) * download.size)
+
         self.statistics_widget.update_statistics(
             total=total_downloads,
             active=stats["active"],
             speed=stats["total_speed"],
-            downloaded=0  # TODO: Calculate total downloaded bytes for better info
+            downloaded=total_downloaded
         )
     
+    def _update_task_menu_state(self):
+        """Disable task actions when no selection or no completed items are available."""
+        if not hasattr(self, "remove_selected_action"):
+            return
+
+        selected_rows = self.download_list.get_selected_rows() if hasattr(self.download_list, "get_selected_rows") else []
+        self.remove_selected_action.setEnabled(bool(selected_rows))
+
+        has_completed = False
+        for row in range(self.download_list.rowCount()):
+            status_item = self.download_list.item(row, 2)
+            if status_item and status_item.text().lower() == "completed":
+                has_completed = True
+                break
+        self.clear_completed_action.setEnabled(has_completed)
+
     def _start_all_downloads(self):
         """Start all downloads"""
         print("[UI] Starting all downloads")
@@ -1078,12 +1069,30 @@ class PyDMMainWindow(QMainWindow):
             )
     
     def _clear_completed_downloads(self):
-        """Clear all completed downloads"""
-        self.queue_manager.clear_completed()
-        for row in range(self.download_list.rowCount() - 1, -1, -1):
+        """Clear all completed downloads after confirmation."""
+        completed_rows = []
+        for row in range(self.download_list.rowCount()):
             status_item = self.download_list.item(row, 2)
             if status_item and status_item.text().lower() == "completed":
-                self.download_list.remove_row(row)
+                completed_rows.append(row)
+
+        if not completed_rows:
+            QMessageBox.information(self, "Info", "No completed downloads to clear")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Clear Completed Downloads",
+            f"Remove {len(completed_rows)} completed download(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.queue_manager.clear_completed()
+        for row in sorted(completed_rows, reverse=True):
+            self.download_list.remove_row(row)
         self.status_label.set_text_with_status(
             "Cleared completed downloads", "idle"
         )

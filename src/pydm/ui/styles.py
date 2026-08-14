@@ -28,6 +28,11 @@ QMenu::item:selected {
     background-color: #e8f4f8;
 }
 
+QMenu::item:disabled {
+    color: #b0b0b0;
+    background-color: transparent;
+}
+
 /* Toolbar */
 QToolBar {
     background-color: #f0f0f0;
@@ -50,6 +55,13 @@ QToolButton:hover {
 
 QToolButton:pressed {
     background-color: #d0d0d0;
+}
+
+QToolButton:disabled {
+    background-color: #f3f3f3;
+    color: #b0b0b0;
+    border: 1px solid #d9d9d9;
+    opacity: 0.65;
 }
 
 /* Splitter */
@@ -157,7 +169,9 @@ QPushButton:pressed {
 
 QPushButton:disabled {
     background-color: #f5f5f5;
-    color: #a0a0a0;
+    border: 1px solid #d9d9d9;
+    color: #a7a7a7;
+    opacity: 0.7;
 }
 
 /* Groupbox */

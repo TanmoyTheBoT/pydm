@@ -3,9 +3,25 @@ const NATIVE_HOST_NAME = "com.pydm.host";
 const SAFE_PROTOCOLS = new Set(["http:", "https:"]);
 const DOWNLOAD_EXTENSIONS = /\.(exe|msi|zip|rar|7z|iso|apk|pdf|mp4|mkv|mp3|dll|deb|rpm|dmg|pkg|tar|gz|bz2|xz)$/i;
 const DOWNLOAD_PATH_HINTS = /(?:\/latest|\/download|\/downloads|\/installer|\/setup|\/install)(?:\/|$)/i;
+const BROWSER_SESSION_START_MS = Date.now();
 
 let nativePort = null;
 let isConnecting = false;
+
+function isNewSessionDownload(download)
+{
+    if(!download || typeof download !== "object")
+        return false;
+
+    if(typeof download.startTime !== "string")
+        return true;
+
+    const startTimeMs = Date.parse(download.startTime);
+    if(Number.isNaN(startTimeMs))
+        return true;
+
+    return startTimeMs >= BROWSER_SESSION_START_MS;
+}
 
 function setIcon(enabled)
 {
@@ -321,6 +337,9 @@ async function resolveDownloadTarget(url)
 
 chrome.downloads.onCreated.addListener(
     (download)=>{
+        if(!isNewSessionDownload(download))
+            return;
+
         if(!isLikelyDownloadUrl(download.url))
             return;
 
