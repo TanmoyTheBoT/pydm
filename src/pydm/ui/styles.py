@@ -245,6 +245,7 @@ QTextEdit, QPlainTextEdit {
 
 # Color scheme
 COLORS = {
+    # Light theme (main app)
     "primary": "#4da6ff",
     "success": "#3fbf3f",
     "warning": "#ff9800",

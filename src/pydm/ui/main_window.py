@@ -13,7 +13,8 @@ from PySide6.QtGui import QIcon, QAction, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QMenuBar, QMenu, QToolBar, QStatusBar, QDialog, QLabel,
-    QMessageBox, QSystemTrayIcon, QApplication, QInputDialog
+    QMessageBox, QSystemTrayIcon, QApplication, QInputDialog,
+    QLineEdit, QComboBox, QPushButton
 )
 from PySide6.QtNetwork import QTcpServer, QHostAddress
 
@@ -22,7 +23,7 @@ from pydm.ui.widgets import (
     SidebarCategoryWidget, DownloadListWidget, ToolbarButton,
     StatisticsWidget, StatusLabel
 )
-from pydm.ui.download_dialog import DownloadOptionsDialog, AddDownloadDialog
+from pydm.ui.download_dialog import AddDownloadDialog
 from pydm.gui import DownloadProgressDialog
 from pydm.ui.download_complete_dialog import DownloadCompleteDialog
 from pydm.downloader import SegmentedDownloadWorker, resolve_url_metadata
@@ -302,7 +303,7 @@ class PyDMMainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{__app_name__} - Python Download Manager v{__version__}")
         self.setWindowIcon(self._get_icon("assets/icon.ico"))
-        self.resize(1200, 700)
+        self.resize(1000, 500)
         
         # Initialize config and database
         self.config = get_config()
@@ -403,7 +404,8 @@ class PyDMMainWindow(QMainWindow):
         
         # Left sidebar - categories
         self.sidebar = SidebarCategoryWidget()
-        self.sidebar.setMaximumWidth(200)
+        self.sidebar.setMaximumWidth(180)
+        self.sidebar.setMinimumWidth(130)
         self.sidebar.category_selected.connect(self._on_category_selected)
         splitter.addWidget(self.sidebar)
         
@@ -450,10 +452,10 @@ class PyDMMainWindow(QMainWindow):
         menubar.setNativeMenuBar(False)
 
         file_menu = menubar.addMenu("File")
-        add_action = QAction("Add Download", self)
-        add_action.setShortcut(QKeySequence.New)
-        add_action.triggered.connect(self._add_download)
-        file_menu.addAction(add_action)
+        new_download_action = QAction("New Download", self)
+        new_download_action.setShortcut(QKeySequence.New)
+        new_download_action.triggered.connect(self._show_quick_add_url_dialog)
+        file_menu.addAction(new_download_action)
         file_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence.Quit)
@@ -495,14 +497,15 @@ class PyDMMainWindow(QMainWindow):
         toolbar = self.addToolBar("Main Toolbar")
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
-        
-        # Add URL button
-        add_btn = ToolbarButton("Add URL", tooltip="Add new download")
-        add_btn.clicked.connect(self._add_download)
-        toolbar.addWidget(add_btn)
-        
+
+        new_download_btn = ToolbarButton("New Download", tooltip="Add a download URL")
+        new_download_btn.setMinimumWidth(130)
+        new_download_btn.setMaximumWidth(180)
+        new_download_btn.clicked.connect(self._show_quick_add_url_dialog)
+        toolbar.addWidget(new_download_btn)
+
         toolbar.addSeparator()
-        
+
         # Control buttons
         resume_btn = ToolbarButton("Resume", tooltip="Start all downloads")
         resume_btn.clicked.connect(self._start_all_downloads)
@@ -511,10 +514,6 @@ class PyDMMainWindow(QMainWindow):
         pause_btn = ToolbarButton("Pause", tooltip="Pause all downloads")
         pause_btn.clicked.connect(self._pause_all_downloads)
         toolbar.addWidget(pause_btn)
-        
-        stop_btn = ToolbarButton("Stop All", tooltip="Stop all downloads")
-        stop_btn.clicked.connect(self._stop_all_downloads)
-        toolbar.addWidget(stop_btn)
         
         toolbar.addSeparator()
         
@@ -618,13 +617,108 @@ class PyDMMainWindow(QMainWindow):
                 except Exception:
                     pass
     
-    def _add_download(self):
-        """Show download options dialog"""
-        dialog = DownloadOptionsDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            info = dialog.get_download_info()
-            # Use helper to enqueue download (keeps logic centralized)
-            self._enqueue_download(info)
+    def _show_quick_add_url_dialog(self):
+        """Open a compact dialog for pasting a URL, then continue into the add-download popup."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New Download")
+        dialog.setWindowModality(Qt.WindowModal)
+        dialog.setMinimumWidth(480)
+        dialog.setMinimumHeight(140)
+        dialog.setWindowFlags(Qt.Dialog | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        
+        # Build stylesheet using light theme COLORS from styles.py
+        dialog_stylesheet = f"""
+            QDialog {{
+                background: {COLORS['bg_primary']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 10px;
+            }}
+            QLabel {{
+                color: {COLORS['text_primary']};
+            }}
+            QLineEdit {{
+                background: {COLORS['bg_secondary']};
+                color: {COLORS['text_primary']};
+                border: 2px solid {COLORS['primary']};
+                border-radius: 10px;
+                padding: 12px 14px;
+                font-size: 15px;
+            }}
+            QComboBox, QPushButton {{
+                background: {COLORS['bg_primary']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+                min-height: 36px;
+                padding: 0 14px;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['hover']};
+            }}
+            QPushButton:pressed {{
+                background: {COLORS['bg_secondary']};
+            }}
+        """
+        dialog.setStyleSheet(dialog_stylesheet)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(10)
+
+        title_row = QHBoxLayout()
+        icon = QLabel("⬇")
+        icon.setStyleSheet(f"QLabel {{ font-size: 18px; color: {COLORS['primary']}; }}")
+        title = QLabel("New Download")
+        title.setStyleSheet(f"QLabel {{ font-size: 16px; font-weight: 600; color: {COLORS['text_primary']}; }}")
+        title_row.addWidget(icon)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        layout.addLayout(title_row)
+
+        url_row = QHBoxLayout()
+        url_icon = QLabel("🔗")
+        url_icon.setStyleSheet(f"QLabel {{ font-size: 20px; color: {COLORS['primary']}; }}")
+        url_input = QLineEdit()
+        url_input.setPlaceholderText("Download link")
+        url_input.setClearButtonEnabled(True)
+        clipboard_text = QApplication.clipboard().text().strip() if QApplication.clipboard() else ""
+        if clipboard_text.startswith(("http://", "https://")):
+            url_input.setText(clipboard_text)
+        url_row.addWidget(url_icon)
+        url_row.addWidget(url_input, 1)
+        layout.addLayout(url_row)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.addStretch()
+
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        bottom_row.addWidget(ok_btn)
+        bottom_row.addWidget(cancel_btn)
+        layout.addLayout(bottom_row)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        raw_url = url_input.text().strip()
+        if not raw_url:
+            QMessageBox.warning(self, "Add URL", "Please enter a valid URL.")
+            return
+
+        final_url, resolved_filename = resolve_url_metadata(raw_url)
+
+        add_dialog = AddDownloadDialog({
+            "url": final_url,
+            "filename": resolved_filename,
+            "folder": str(Path.home() / "Downloads"),
+        }, self)
+        add_dialog.finished.connect(lambda result, dlg=add_dialog: self._on_add_dialog_finished(dlg, result))
+        add_dialog.show()
+        add_dialog.raise_()
+        add_dialog.activateWindow()
 
     def _load_downloads_from_database(self):
         """Load previous downloads from database on startup"""
@@ -718,6 +812,9 @@ class PyDMMainWindow(QMainWindow):
             print(f"[MainWindow] Error loading downloads from database: {e}")
             import traceback
             traceback.print_exc()
+        
+        # Update statistics after loading all downloads
+        self._on_queue_changed()
 
     def _on_add_dialog_finished(self, dialog: AddDownloadDialog, result: int):
         """Handle finished AddDownloadDialog (non-modal)."""

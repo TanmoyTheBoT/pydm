@@ -55,42 +55,33 @@ class PyDMConfig:
         return config_dir
     
     def _init_database(self):
-        """Initialize SQLite database for download history"""
+        """Initialize SQLite database for download history."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
-            
-            # Create downloads table with all fields needed for restoration
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS downloads (
-                    download_id TEXT PRIMARY KEY,
-                    filename TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    save_folder TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    status TEXT DEFAULT 'pending',
-                    total_size INTEGER DEFAULT 0,
-                    downloaded_size INTEGER DEFAULT 0,
-                    temp_folder TEXT,
-                    comments TEXT,
-                    connections INTEGER DEFAULT 4,
-                    timeout INTEGER DEFAULT 30,
-                    retry_count INTEGER DEFAULT 3,
-                    speed_limit INTEGER DEFAULT 0,
-                    resume INTEGER DEFAULT 1,
-                    skip_existing INTEGER DEFAULT 0,
-                    use_proxy INTEGER DEFAULT 0,
-                    proxy_url TEXT,
-                    start_immediately INTEGER DEFAULT 1,
-                    auto_start INTEGER DEFAULT 1,
-                    high_priority INTEGER DEFAULT 0,
-                    post_action TEXT DEFAULT 'No Action',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    deleted_at TIMESTAMP
-                )
-            """)
-            
+
+            if not self._table_exists(cursor, "downloads"):
+                cursor.execute("""
+                    CREATE TABLE downloads (
+                        download_id TEXT PRIMARY KEY,
+                        filename TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        save_folder TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        status TEXT DEFAULT 'pending',
+                        total_size INTEGER DEFAULT 0,
+                        downloaded_size INTEGER DEFAULT 0,
+                        temp_folder TEXT,
+                        comments TEXT,
+                        connections INTEGER DEFAULT 4,
+                        timeout INTEGER DEFAULT 30,
+                        retry_count INTEGER DEFAULT 3,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        deleted_at TIMESTAMP
+                    )
+                """)
+
             # Create download parts table for segmented downloads
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS download_parts (
@@ -140,42 +131,36 @@ class PyDMConfig:
     def save_download(self, download_id: str, filename: str, url: str, 
                      save_folder: str, category: str, total_size: int = 0, 
                      temp_folder: str = None, **kwargs):
-        """Save download metadata to database with all configuration"""
+        """Save download metadata to database with only the fields this app actually uses."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
-            
-            # Build insert statement with all fields
+
             cursor.execute("""
                 INSERT OR REPLACE INTO downloads 
                 (download_id, filename, url, save_folder, category, status, total_size, temp_folder,
-                 comments, connections, timeout, retry_count, speed_limit, resume, skip_existing,
-                 use_proxy, proxy_url, start_immediately, auto_start, high_priority, post_action)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 comments, connections, timeout, retry_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                download_id, filename, url, save_folder, category, 
+                download_id, filename, url, save_folder, category,
                 kwargs.get('status', 'pending'),
                 total_size, temp_folder,
                 kwargs.get('comments', ''),
                 kwargs.get('connections', 4),
                 kwargs.get('timeout', 30),
                 kwargs.get('retry_count', 3),
-                kwargs.get('speed_limit', 0),
-                1 if kwargs.get('resume', True) else 0,
-                1 if kwargs.get('skip_existing', False) else 0,
-                1 if kwargs.get('use_proxy', False) else 0,
-                kwargs.get('proxy_url', ''),
-                1 if kwargs.get('start_immediately', True) else 0,
-                1 if kwargs.get('auto_start', True) else 0,
-                1 if kwargs.get('high_priority', False) else 0,
-                kwargs.get('post_action', 'No Action'),
             ))
-            
+
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"[PyDMConfig] Error saving download: {e}")
     
+    def _table_exists(self, cursor, table_name: str) -> bool:
+        """Check whether a table exists."""
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        return cursor.fetchone() is not None
+
     def update_download_status(self, download_id: str, status: str, 
                               downloaded_size: int = None, total_size: int = None):
         """Update download status and progress. Clean up temp folder if completed."""

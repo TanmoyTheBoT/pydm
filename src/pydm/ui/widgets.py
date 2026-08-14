@@ -86,8 +86,9 @@ class SidebarCategoryWidget(QTreeWidget):
         self.setRootIsDecorated(True)
         self.setAnimated(True)
         self.setUniformRowHeights(True)
-        self.setMinimumWidth(180)
-        self.setMaximumWidth(280)
+        self.setMinimumWidth(130)
+        self.setMaximumWidth(180)
+        self.setColumnWidth(0, 165)
         
         self.itemClicked.connect(self._on_item_clicked)
         self._setup_categories()
