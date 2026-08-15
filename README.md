@@ -1,6 +1,6 @@
 # PyDM
 
-PyDM is a Windows desktop download manager built with Python and PySide6. It combines a native desktop client, browser integration for Chrome and Edge, and a sequential download queue to provide a lightweight IDM-style workflow without requiring a full browser extension-only approach.
+PyDM is a Windows desktop download manager built with Python and PySide6. It combines a native desktop client, browser integration for Chrome and Edge, and a sequential download queue for a streamlined download workflow.
 
 <div align="center">
   <img src="docs\assets\Screenshot 2026-08-15 193129.png" alt="PyDM main application window" width="1100" />
