@@ -7,6 +7,10 @@ wheels/
 *.egg-info
 *.exe
 *.iss
+manifests/
+IMPLEMENTATION_SUMMARY.md
+QUICK_START.md
+UI_ARCHITECTURE.md
 
 # Virtual environments
 .venv

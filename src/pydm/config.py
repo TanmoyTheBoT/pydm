@@ -81,6 +81,12 @@ class PyDMConfig:
                         deleted_at TIMESTAMP
                     )
                 """)
+            else:
+                columns = cursor.execute("PRAGMA table_info(downloads)").fetchall()
+                if not any(column[1] == "created_at" for column in columns):
+                    cursor.execute(
+                        "ALTER TABLE downloads ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                    )
 
             # Create download parts table for segmented downloads
             cursor.execute("""
@@ -131,16 +137,27 @@ class PyDMConfig:
     def save_download(self, download_id: str, filename: str, url: str, 
                      save_folder: str, category: str, total_size: int = 0, 
                      temp_folder: str = None, **kwargs):
-        """Save download metadata to database with only the fields this app actually uses."""
+        """Save download metadata to database while preserving the original creation timestamp."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
 
+            existing = cursor.execute(
+                "SELECT created_at FROM downloads WHERE download_id = ?",
+                (download_id,),
+            ).fetchone()
+
+            created_at = kwargs.get('created_at')
+            if not created_at and existing and existing[0]:
+                created_at = existing[0]
+            if not created_at:
+                created_at = datetime.now().isoformat(timespec='seconds')
+
             cursor.execute("""
                 INSERT OR REPLACE INTO downloads 
                 (download_id, filename, url, save_folder, category, status, total_size, temp_folder,
-                 comments, connections, timeout, retry_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 comments, connections, timeout, retry_count, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 download_id, filename, url, save_folder, category,
                 kwargs.get('status', 'pending'),
@@ -149,6 +166,7 @@ class PyDMConfig:
                 kwargs.get('connections', 4),
                 kwargs.get('timeout', 30),
                 kwargs.get('retry_count', 3),
+                created_at,
             ))
 
             conn.commit()

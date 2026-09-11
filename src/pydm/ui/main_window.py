@@ -387,8 +387,23 @@ class PyDMMainWindow(QMainWindow):
         return QIcon()
     
     def _get_current_date(self) -> str:
-        """Get current date formatted"""
+        """Get current date formatted."""
         return datetime.now().strftime("%b %d %Y")
+
+    def _format_table_date(self, value) -> str:
+        """Convert stored timestamp values to the display date used in the table."""
+        if not value:
+            return self._get_current_date()
+
+        try:
+            if isinstance(value, datetime):
+                return value.strftime("%b %d %Y")
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).strftime("%b %d %Y")
+        except ValueError:
+            try:
+                return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S").strftime("%b %d %Y")
+            except ValueError:
+                return str(value)
     
     def _setup_ui(self):
         """Setup main UI layout"""
@@ -724,7 +739,7 @@ class PyDMMainWindow(QMainWindow):
         """Load previous downloads from database on startup"""
         try:
             downloads = self.config.get_all_downloads(include_deleted=False)
-            for dl_info in downloads:
+            for dl_info in reversed(downloads):
                 # Reconstruct QueuedDownload from database
                 download_id = dl_info["download_id"]
                 filename = dl_info["filename"]
@@ -783,12 +798,13 @@ class PyDMMainWindow(QMainWindow):
                 
                 # For completed downloads, show 100% progress
                 progress_pct = "100%" if status == "completed" else "0%"
-                
+                created_at = dl_info.get("created_at")
+
                 # Add to UI list with proper size formatting
                 row = self.download_list.add_download(
                     filename, size_display, status.capitalize(), 
                     "0 KB/s", "-", progress_pct,
-                    self._get_current_date(),
+                    self._format_table_date(created_at),
                     download_id=download_id,
                 )
                 
@@ -812,6 +828,8 @@ class PyDMMainWindow(QMainWindow):
             print(f"[MainWindow] Error loading downloads from database: {e}")
             import traceback
             traceback.print_exc()
+
+        self.download_list.clearSelection()
         
         # Update statistics after loading all downloads
         self._on_queue_changed()
@@ -917,7 +935,7 @@ class PyDMMainWindow(QMainWindow):
         # Add to list UI
         row = self.download_list.add_download(
             filename, "Unknown", "Queued", "0 KB/s", "-", "0%",
-            self._get_current_date(),
+            self._format_table_date(queued.added_at),
             download_id=download_id,
         )
         # Store category in the row for filtering

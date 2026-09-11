@@ -49,6 +49,18 @@ The project is organized around a few key modules:
 - Chrome or Edge for browser integration
 - Optional: Inno Setup 6 for generating the Windows installer
 
+## Install PyDM
+
+### Windows package managers
+
+```powershell
+choco install pydm
+```
+
+```powershell
+winget install TanmoyTheBoT.PyDM
+```
+
 ## Quick start
 
 ### 1. Install dependencies
