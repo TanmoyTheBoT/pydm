@@ -15,6 +15,9 @@ pydm = "pydm.app:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+pydm = ["assets/*"]
+
 [tool.setuptools.dynamic]
 version = {attr = "pydm.version.__version__"}
 

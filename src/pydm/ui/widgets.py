@@ -196,10 +196,10 @@ class DownloadListWidget(QTableWidget):
         """)
     
     def add_download(self, filename, size, status, speed, eta, progress, date_added, download_id=None):
-        """Add a download row"""
-        row = self.rowCount()
+        """Add a download row at the top so the newest item is always visible first."""
+        row = 0
         self.insertRow(row)
-        
+
         # File name
         name_item = QTableWidgetItem(filename)
         if download_id is not None:
@@ -255,7 +255,6 @@ class DownloadListWidget(QTableWidget):
         date_item = QTableWidgetItem(date_added)
         self.setItem(row, 6, date_item)
         self.setRowHidden(row, False)
-        self.setCurrentCell(row, 0)
         return row
 
     def get_download_id(self, row):
